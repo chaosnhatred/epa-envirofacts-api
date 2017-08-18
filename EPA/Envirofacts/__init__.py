@@ -10,4 +10,6 @@
 #            continue
 #        __all__.append(module[:-3])
 
-__all__ = ["Violation"]
+__all__ = ["SDWIS"]
+#from .SDWIS import *
+from .Configuration import *

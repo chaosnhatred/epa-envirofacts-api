@@ -11,3 +11,4 @@
 #        __all__.append(module[:-3])
 
 __all__ = ["Violation"]
+from .Violation import *

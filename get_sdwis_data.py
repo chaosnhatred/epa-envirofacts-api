@@ -1,15 +1,21 @@
-import csv, os, errno, threading, queue
-from EPA.Envirofacts.SDWIS import Violation
-from EPA.Envirofacts.Configuration import get_state, set_state
-from sys import stdout
+# -*- coding: utf-8 -*-
+
+import csv, os, errno, threading, queue, sys
+import EPA.Envirofacts.Configuration as config
+import EPA.Envirofacts.SDWIS.Violation as violation
+from io import StringIO
 from time import sleep
 from optparse import OptionParser
+from datetime import datetime
+#from EPA.Envirofacts.SDWIS import Violation
+#from EPA.Envirofacts import Configuration
+from EPA.Utilities import suppress_stdout, get_timespan, print_progressbar
 
 def wrapper(func, args, queue):
     try:
         queue.put(func(*args))
     except Exception as e:
-        stdout.write('%s\n' % e)
+        sys.stdout.write('%s\n' % e)
     finally:
         return
 
@@ -18,50 +24,46 @@ def spinning_cursor():
         for cursor in '|/-\\':
             yield cursor
 
-def run_thread(thread):
+def run_thread(thread, queue, show_spinner=True):
     spinner = spinning_cursor()
 
-    t.start()
-    while t.isAlive():
-        stdout.write(next(spinner))
-        stdout.flush()
-        sleep(0.2)
-        stdout.write('\b')
-    t.join()
-    stdout.write('done\n')
-    return q.get()
+    thread.start()
+    while thread.isAlive():
+        if show_spinner:
+            sys.stdout.write(next(spinner))
+            sys.stdout.flush()        
+            sys.stdout.write('\b')
+        sleep(0.25)
+    thread.join()    
+    return queue.get()
 
 def parse_results(result):
     final_result = []
     v_count = 0
+    csv_list = None
 
-    if not result and len(result) > 0:
-        return None
+    with StringIO(result) as in_s:       
+        csv_reader = csv.reader(in_s)        
+        csv_list = list(csv_reader)
+    
+    if not csv_list and len(csv_list) <= 0:
+            return None
 
-    for w in result:
-        if not w['violation'] or type(w['violation']) is not list:
-            continue
-
-        tmp = {}
-        tmp.update(w)
-        tmp.pop('violation', None)
-                
-        for v in w['violation']: 
-            if not v or type(v) is not dict:
-                continue
-
-            ++v_count                  
-            tmp2 = {}
-            tmp2.update(v)
-            tmp2.pop('geographic_area', None)
-            for g in v['geographic_area']:
-                if not g or type(g) is not dict:
-                    continue
-
-                    tmp2.update(g)
-
-            tmp2.update(tmp)                
-            final_result.append(tmp2)
+    #with StringIO() as out_s:                   
+    #    csv_writer = csv.writer(out_s, delimiter = ",")
+    header = csv_list[0]
+    final_result.append(header)
+    #csv_writer.writerow(header)
+    total = len(csv_list)  
+    pbar_length = print_progressbar(v_count, total, bar_length=20, suffix='(%d/%d)' % (v_count, total))
+    for w in csv_list:
+        v_count += 1            
+        if w != header:
+            final_result.append(w)
+            #csv_writer.writerow(w)        
+        pbar_length = print_progressbar(v_count, total, bar_length=20, suffix='(%d/%d) ' % (v_count, total), old_length=pbar_length)
+    print_progressbar(v_count, total, bar_length=20, suffix='(%d/%d)' % (v_count, total), old_length=pbar_length)
+        #final_result = out_s.getvalue()
 
     return final_result
 
@@ -79,47 +81,107 @@ def write_results(filename, result):
         if e.errno != errno.ENOENT: # errno.ENOENT = no such file or directory
             raise
 
-    with open(filename, 'w') as f:
-        w = csv.DictWriter(f, result[0].keys())
-        w.writeheader()
+    with open(filename, 'w', newline='') as f:
+        #w = csv.DictWriter(f, result[0].keys())
+        w = csv.writer(f)
+        #w.writeheader()
         w.writerows(result)
 
-parser = OptionParser()
-parser.add_option("-s", "--state", dest = "state", default = 'DE',
-                  help = "state to get violations for")
-parser.add_option("-f", "--file", dest = "filename", default = 'output.csv',
-                  help = "write report to FILE", metavar = "FILE")
-parser.add_option("-q", "--quiet",
-                  action = "store_false", dest = "verbose",
-                  help = "don't print status messages to stdout")
+def main():
+    count = options.max_records
+    final_results = []
+    q = queue.Queue()
+    config.state = options.state
+    config.result_format = 'csv'
 
-(options, args) = parser.parse_args()
+    print('====== Violations for the state: %s ======' % config.state)
+    
+    if count <= 0:
+        sys.stdout.write('---Getting violation count (step 0/3): ')
+        start_time = datetime.now().timestamp()    
+        try:
+            count = violation.get_count()
+        except:
+            sys.stdout.write(' [failed]')
+        else:
+            sys.stdout.write(' [done]')
+        end_time = datetime.now().timestamp()
+        sys.stdout.write(' [%s]\n' % get_timespan(start_time, end_time))
 
-final_results = []
-q = queue.Queue()
-set_state(options.state)
+    sys.stdout.write('---Getting %d violations (step 1/3): ' % count)
+    start_time = datetime.now().timestamp()    
+    try:
+        if count <= 0:
+            t = threading.Thread(target=wrapper, args=(violation.get_all, [], q))
+        else:
+            t = threading.Thread(target=wrapper, args=(violation.get, (count,), q))
 
-if options.verbose:
-    f = open(os.devnull, 'w')
-    sys.stdout = f
+        results = run_thread(t, q)    
+    except:
+        sys.stdout.write(' [failed]')
+    else:
+        sys.stdout.write(' [done]')
+    end_time = datetime.now().timestamp()
+    sys.stdout.write(' [%s]\n' % get_timespan(start_time, end_time))
+    
 
-print('====== Violations for the state: %s ======' % get_state())
+    sys.stdout.write('---Parsing results (step 2/3): ')
+    start_time = datetime.now().timestamp()
+    if results and len(results) > 0:   
+        try: 
+            t = threading.Thread(target=wrapper, args=(parse_results, (results,), q))
+            final_results = run_thread(t, q, False)
+        except:
+            sys.stdout.write(' [failed]')
+        else:
+            sys.stdout.write(' [done]')
+    else:
+        sys.stdout.write(' [skipping]')
+    end_time = datetime.now().timestamp()
+    sys.stdout.write(' [%s]\n' % get_timespan(start_time, end_time))
 
-count = Violation.get_count()
-stdout.write('---Getting %d violations (step 1/3): ' % count)
-t = threading.Thread(target=wrapper, args=(Violation.get_all, [], q))
-results = run_thread(t)
+    sys.stdout.write('---Saving results to %s (step 3/3): ' % options.filename)
+    start_time = datetime.now().timestamp()
+    if final_results and len(final_results) > 0:
+        try:
+            t = threading.Thread(target=wrapper, args=(write_results, (options.filename, final_results,), q))
+            run_thread(t, q)
+        except:
+            sys.stdout.write(' [failed]')
+        else:
+            sys.stdout.write(' [done]')
+    else:
+        sys.stdout.write(' [skipping]')
+    end_time = datetime.now().timestamp()
+    sys.stdout.write(' [%s]\n' % get_timespan(start_time, end_time))    
 
-stdout.write('---Parsing results (step 2/3): ')
-if results and len(results) > 0:    
-    t = threading.Thread(target=wrapper, args=(parse_results, (results,), q))
-    final_results = run_thread(t)
-else:
-    stdout.write('\b skipping\n There were no Violations or result set was null.\n')
+if __name__ == "__main__":
+    try:
+        parser = OptionParser()
+        parser.add_option("-s", "--state", dest = "state", default = 'DE',
+                            help = "state to get violations for")
+        parser.add_option("-f", "--file", dest = "filename", default = 'output.csv',
+                            help = "write report to FILE", metavar = "FILE")
+        parser.add_option("-q", "--quiet",
+                            action = "store_false", dest = "verbose", default=True,
+                            help = "don't print status messages to stdout")
+        parser.add_option("-m", "--max", dest = "max_records", default = 0, type = int,
+                            help = "maximum violations to get")
 
-stdout.write('---Saving results to %s  (step 3/3): ' % options.filename)
-if final_results and len(final_results) > 0:
-    t = threading.Thread(target=wrapper, args=(write_results, (options.filename, final_results,), q))
-    run_thread(t)
-else:
-    stdout.write('\b skipping\n There were no Violations or result set was null.\n')
+        (options, args) = parser.parse_args()
+
+
+        script_start_time = datetime.now().timestamp()
+        if not options.verbose:
+                with suppress_stdout():
+                    main()
+        else:
+            main()
+        script_end_time = datetime.now().timestamp()
+        sys.stdout.write('\rScript completed in: %s\n' % get_timespan(script_start_time, script_end_time))
+    except KeyboardInterrupt:
+            print('process interrupted')
+    except Exception as e:
+        print(e)
+    finally:
+        sys.exit()

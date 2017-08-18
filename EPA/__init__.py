@@ -25,3 +25,5 @@ except:
 #        __all__.appwnd(module[:-3])
 
 __all__ = ["Envirofacts"] 
+#from .Envirofacts import *
+from .Utilities import *
