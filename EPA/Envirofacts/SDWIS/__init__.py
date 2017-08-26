@@ -10,5 +10,4 @@
 #            continue
 #        __all__.append(module[:-3])
 
-__all__ = ["Violation"]
-from .Violation import *
+from . import Violation

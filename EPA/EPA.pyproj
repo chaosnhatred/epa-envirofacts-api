@@ -26,10 +26,14 @@
     <Compile Include="Envirofacts\Configuration.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Envirofacts\SDWIS\WaterSystem.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Envirofacts\SDWIS\__init__.py" />
     <Compile Include="Envirofacts\SDWIS\Violation.py" />
     <Compile Include="Envirofacts\__init__.py" />
-    <Compile Include="Utilities.py">
+    <Compile Include="__Utilities\__init__.py" />
+    <Compile Include="__Utilities\__utilities.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="__init__.py">
@@ -39,6 +43,10 @@
   <ItemGroup>
     <Folder Include="Envirofacts\" />
     <Folder Include="Envirofacts\SDWIS\" />
+    <Folder Include="__Utilities\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="__Utilities\states_hash.json" />
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>

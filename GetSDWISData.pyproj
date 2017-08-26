@@ -23,6 +23,14 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="get_sdwis_data.py" />
+    <Compile Include="utilities.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="EPA\EPA.pyproj">
+      <Name>EPA</Name>
+      <Project>{3074b636-ea54-41c3-82c5-66978cdcc3bd}</Project>
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>

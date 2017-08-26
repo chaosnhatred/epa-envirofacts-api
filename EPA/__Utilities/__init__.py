@@ -8,7 +8,4 @@
 #    for module in os.listdir(os.path.dirname(directory)):
 #        if module == '__init__.py' or module[-3:] != '.py':
 #            continue
-#        __all__.append(module[:-3])
-
-from . import Configuration
-from . import SDWIS
+#        __all__.appwnd(module[:-3])
